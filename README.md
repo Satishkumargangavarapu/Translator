@@ -1,5 +1,7 @@
 # Translator
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Repo](https://img.shields.io/badge/Repository-Translator-blue)](https://github.com/Satishkumargangavarapu/Translator)
+
 A multilingual translator web application built with Flask that combines local English↔Hindi transformer translation with a Google Translate fallback for broader language support.
 
 ## Repository Metadata
