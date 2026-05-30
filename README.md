@@ -12,7 +12,9 @@ A multilingual translator web application built with Flask that combines local E
 
 ## Overview
 
-This project is a lightweight translator app designed to provide both local offline translation and cloud-based fallback translation. It serves a static frontend and exposes two main API endpoints for translation and status checks.
+This project is a lightweight translator app designed to provide both local offline translation and cloud-based fallback translation. It serves a static frontend and exposes API endpoints for translation, status, and supported languages.
+
+The frontend can auto-detect the source language and fall back to Google Translate when a local model pair is not available.
 
 ## Supported Languages
 
@@ -124,6 +126,12 @@ flowchart TD
 4. The backend returns translated text plus the engine used for translation.
 5. The frontend displays the translated output and engine status.
 
+## API Endpoints
+
+- `GET /api/status` — returns model loading status and current engine.
+- `GET /api/languages` — returns supported languages and supported translation pairs.
+- `POST /api/translate` — accepts `text`, `source_lang`, and `target_lang`, and returns the translated text.
+
 ## Running Locally
 
 1. Create and activate a Python virtual environment.
@@ -146,8 +154,15 @@ python app.py
 This app can run locally or be deployed to any Python-compatible host.
 
 - For local testing, run `python app.py`.
-- For production, use a WSGI server such as Gunicorn or uWSGI and serve the static files through the Flask app or a CDN.
-- Ensure `requirements.txt` is installed and the server has network access for cloud fallback translation.
+- Use `gunicorn` for production, which is included in `requirements.txt`.
+- Build and run as a Docker container:
+
+```bash
+docker build -t translator .
+docker run -p 5000:5000 translator
+```
+
+- Ensure the server has network access for cloud fallback translation when local models are not available.
 
 ## Notes
 

@@ -2,7 +2,8 @@ import os
 import threading
 import time
 import mimetypes
-from flask import Flask, request, jsonify, send_from_directory
+import logging
+from flask import Flask, request, jsonify
 from deep_translator import GoogleTranslator
 
 # Force correct MIME types for Windows registry compatibility (solves CSS MIME-type blocker)
@@ -11,9 +12,31 @@ mimetypes.add_type('application/javascript', '.js')
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
-# Model configuration
+# Configure logging for diagnostics
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+
+# Model configuration and supported languages
 EN_HI_MODEL = "Helsinki-NLP/opus-mt-en-hi"
 HI_EN_MODEL = "Helsinki-NLP/opus-mt-hi-en"
+
+LANGUAGE_LABELS = {
+    'auto': 'Auto Detect',
+    'en': 'English',
+    'hi': 'Hindi',
+    'ta': 'Tamil',
+    'te': 'Telugu',
+    'es': 'Spanish',
+    'fr': 'French'
+}
+
+SUPPORTED_LANGUAGE_MATRIX = {
+    'en': ['hi', 'ta', 'te', 'es', 'fr'],
+    'hi': ['en', 'ta', 'te', 'es', 'fr'],
+    'ta': ['en', 'hi', 'es', 'fr'],
+    'te': ['en', 'hi', 'es', 'fr'],
+    'es': ['en', 'hi', 'ta', 'te', 'fr'],
+    'fr': ['en', 'hi', 'ta', 'te', 'es']
+}
 
 # Thread-safe status and model holders
 models = {
@@ -70,11 +93,16 @@ def load_transformer_models():
 
 def translate_fallback(text, source, target):
     """Fallback translation using deep-translator (Google Translate API)"""
+    if source == 'auto':
+        source_lang = 'auto'
+    else:
+        source_lang = source
+
     try:
-        translator = GoogleTranslator(source=source, target=target)
+        translator = GoogleTranslator(source=source_lang, target=target)
         return translator.translate(text), "Cloud API (Online Fallback)"
     except Exception as e:
-        print(f"Fallback translation error: {e}")
+        logging.error("Fallback translation error: %s", e)
         return f"[Translation Error: {str(e)}]", "None"
 
 @app.route('/')
@@ -90,25 +118,36 @@ def get_status():
             'error': model_status['error']
         })
 
+@app.route('/api/languages', methods=['GET'])
+def get_languages():
+    language_list = [{'code': code, 'label': label} for code, label in LANGUAGE_LABELS.items()]
+    return jsonify({
+        'languages': language_list,
+        'supported_pairs': SUPPORTED_LANGUAGE_MATRIX
+    })
+
 @app.route('/api/translate', methods=['POST'])
 def translate():
     data = request.get_json() or {}
     text = data.get('text', '').strip()
-    source_lang = data.get('source_lang', 'en') # 'en', 'hi', etc.
-    target_lang = data.get('target_lang', 'hi') # 'hi', 'en', etc.
+    source_lang = data.get('source_lang', 'en')
+    target_lang = data.get('target_lang', 'hi')
 
     if not text:
         return jsonify({'translated_text': '', 'engine': 'None'})
 
-    # Determine direction key
+    if source_lang == target_lang and source_lang != 'auto':
+        return jsonify({
+            'translated_text': text,
+            'engine': 'No translation needed'
+        })
+
     dir_key = f"{source_lang}-{target_lang}"
-    
-    # Check if local model can handle this direction and is loaded
     use_local = False
     pipeline_model = None
-    
+
     with model_lock:
-        if model_status['status'] == 'loaded' and dir_key in models:
+        if source_lang != 'auto' and model_status['status'] == 'loaded' and dir_key in models:
             pipeline_model = models[dir_key]
             if pipeline_model is not None:
                 use_local = True
@@ -116,49 +155,39 @@ def translate():
     if use_local:
         try:
             start_time = time.time()
-            # Run local transformer inference
             tokenizer = pipeline_model['tokenizer']
             model = pipeline_model['model']
-            
             inputs = tokenizer(text, return_tensors="pt", padding=True)
             outputs = model.generate(**inputs)
             translated = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
             elapsed = time.time() - start_time
-            engine = f"Transformer Local (Inference: {elapsed:.2f}s)"
+            engine = f"Local Transformer ({dir_key}) - {elapsed:.2f}s"
             return jsonify({
                 'translated_text': translated,
                 'engine': engine
             })
         except Exception as e:
-            print(f"Local model inference failed, falling back: {e}")
-            # Fall back to cloud API if inference fails
+            logging.error("Local model inference failed: %s", e)
             translated, engine = translate_fallback(text, source_lang, target_lang)
             return jsonify({
                 'translated_text': translated,
                 'engine': f"{engine} (Local error)"
             })
-    else:
-        # Fall back to cloud translation
-        translated, engine = translate_fallback(text, source_lang, target_lang)
-        # If models have not started loading, kick off loading thread
-        with model_lock:
-            if model_status['status'] == 'idle':
-                # Start background loading thread
-                threading.Thread(target=load_transformer_models, daemon=True).start()
-        
-        # Add visual context about backend state
-        with model_lock:
-            current_status = model_status['status']
-            if current_status == 'loading':
-                engine = f"{engine} [Local models downloading/initializing in background...]"
-            elif current_status == 'failed':
-                engine = f"{engine} [Local model run disabled due to resource constraints]"
-        
-        return jsonify({
-            'translated_text': translated,
-            'engine': engine
-        })
+
+    translated, engine = translate_fallback(text, source_lang, target_lang)
+    with model_lock:
+        if model_status['status'] == 'idle':
+            threading.Thread(target=load_transformer_models, daemon=True).start()
+        current_status = model_status['status']
+        if current_status == 'loading':
+            engine = f"{engine} [Local models downloading in background]"
+        elif current_status == 'failed':
+            engine = f"{engine} [Local model unavailable]"
+
+    return jsonify({
+        'translated_text': translated,
+        'engine': engine
+    })
 
 if __name__ == '__main__':
     # Ensure static directory exists

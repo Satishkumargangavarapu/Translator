@@ -231,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Match speech recognition language with selected source language
         const langMap = {
+            'auto': 'en-US',
             'en': 'en-US',
             'hi': 'hi-IN',
             'ta': 'ta-IN',
