@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherTranslate // Premium AI Translator</title>
+    <meta name="description" content="A state-of-the-art AI translator powered by local Transformer neural networks and modern NLP techniques. Experience real-time translation, speech synthesis, and voice recognition.">
+    <!-- Google Fonts: Outfit and Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons for modern styling -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Main Style Sheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Ambient Glows -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    
+    <div class="app-layout">
+        <!-- Sidebar Navigation / History Drawer -->
+        <aside class="history-drawer" id="historyDrawer">
+            <div class="drawer-header">
+                <h3><i class="fa-solid fa-clock-rotate-left"></i> History</h3>
+                <button class="icon-btn close-drawer-btn" id="closeDrawerBtn" aria-label="Close history drawer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="historySearch" placeholder="Search history...">
+            </div>
+            
+            <div class="history-list" id="historyList">
+                <!-- Dynamically populated history items -->
+                <div class="empty-history">
+                    <i class="fa-regular fa-folder-open"></i>
+                    <p>No translation history yet.</p>
+                </div>
+            </div>
+            
+            <div class="drawer-footer">
+                <button class="btn secondary-btn full-width" id="clearHistoryBtn">
+                    <i class="fa-solid fa-trash-can"></i> Clear History
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Application Area -->
+        <main class="main-content">
+            <!-- Header Section -->
+            <header class="app-header">
+                <div class="logo-area">
+                    <div class="logo-orb">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div>
+                        <h1>AETHER<span>TRANSLATE</span></h1>
+                        <p class="tagline">Next-Generation Neural Language Processor</p>
+                    </div>
+                </div>
+                
+                <div class="header-controls">
+                    <!-- History Toggle Button -->
+                    <button class="btn glass-btn" id="toggleHistoryBtn" aria-label="Toggle translation history">
+                        <i class="fa-solid fa-clock-rotate-left"></i> History
+                    </button>
+                    <!-- Backend Connection Status Dot -->
+                    <div class="status-indicator">
+                        <span class="status-dot pulsing" id="statusDot"></span>
+                        <span class="status-text" id="statusText">Connecting...</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Translation Workspace -->
+            <section class="workspace">
+                <!-- Source Container -->
+                <div class="card glass-card source-card">
+                    <div class="card-header">
+                        <div class="lang-selector-wrapper">
+                            <label for="sourceLang" class="sr-only">Source Language</label>
+                            <select id="sourceLang" class="lang-select">
+                                <option value="en" selected>English</option>
+                                <option value="hi">Hindi (हिन्दी)</option>
+                                <option value="ta">Tamil (தமிழ்)</option>
+                                <option value="te">Telugu (తెలుగు)</option>
+                                <option value="es">Spanish (Español)</option>
+                                <option value="fr">French (Français)</option>
+                            </select>
+                        </div>
+                        <div class="header-actions">
+                            <button class="icon-btn" id="voiceTypingBtn" title="Voice Input (Speech-to-Text)">
+                                <i class="fa-solid fa-microphone"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <textarea id="sourceText" placeholder="Enter text or click microphone for voice typing..." maxlength="5000" spellcheck="false" autocomplete="off"></textarea>
+                        <div class="voice-support-note" id="voiceStatusNote" aria-live="polite"></div>
+                        <!-- Voice Waveform Indicator -->
+                        <div class="voice-waveform" id="voiceWaveform">
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <div class="bar"></div>
+                            <span>Listening...</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card-footer">
+                        <div class="stats-counter">
+                            <span id="charCount">0</span>/5000 characters
+                            <span class="dot-separator">•</span>
+                            <span id="wordCount">0</span> words
+                        </div>
+                        <div class="footer-actions">
+                            <button class="icon-btn" id="clearTextBtn" title="Clear text">
+                                <i class="fa-solid fa-eraser"></i>
+                            </button>
+                            <button class="icon-btn" id="copySourceBtn" title="Copy input">
+                                <i class="fa-solid fa-clone"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Swap Languages Column (Desktop-only visually, functional everywhere) -->
+                <div class="swap-action-container">
+                    <button class="swap-btn" id="swapLanguagesBtn" title="Swap languages">
+                        <i class="fa-solid fa-right-left"></i>
+                    </button>
+                </div>
+
+                <!-- Target Container -->
+                <div class="card glass-card target-card">
+                    <!-- Shimmer translation loader -->
+                    <div class="loading-overlay" id="loadingOverlay">
+                        <div class="loading-spinner"></div>
+                        <span class="loading-label">Translating with Neural Network...</span>
+                    </div>
+
+                    <div class="card-header">
+                        <div class="lang-selector-wrapper">
+                            <label for="targetLang" class="sr-only">Target Language</label>
+                            <select id="targetLang" class="lang-select">
+                                <option value="en">English</option>
+                                <option value="hi" selected>Hindi (हिन्दी)</option>
+                                <option value="ta">Tamil (தமிழ்)</option>
+                                <option value="te">Telugu (తెలుగు)</option>
+                                <option value="es">Spanish (Español)</option>
+                                <option value="fr">French (Français)</option>
+                            </select>
+                        </div>
+                        <div class="header-actions">
+                            <button class="icon-btn" id="speakTranslationBtn" title="Listen (Text-to-Speech)">
+                                <i class="fa-solid fa-volume-high"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <div class="translation-output-container">
+                            <div id="targetText" class="translation-output placeholder">Translation will appear here...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="card-footer">
+                        <div class="engine-badge" id="engineBadge">
+                            <i class="fa-solid fa-microchip"></i> Engine: Offline Fallback
+                        </div>
+                        <div class="footer-actions">
+                            <button class="icon-btn" id="copyTargetBtn" title="Copy translation">
+                                <i class="fa-solid fa-clone"></i>
+                            </button>
+                            <button class="icon-btn" id="favoriteBtn" title="Save to history">
+                                <i class="fa-regular fa-star"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Mid-level Settings Option Bar -->
+            <section class="options-bar">
+                <div class="option-toggle">
+                    <label class="switch-container">
+                        <input type="checkbox" id="autoTranslateToggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-label">Auto-Translate (Debounced)</span>
+                </div>
+                
+                <button class="btn primary-btn animate-pulse" id="manualTranslateBtn">
+                    <i class="fa-solid fa-paper-plane"></i> Translate Now
+                </button>
+            </section>
+
+            <section class="sample-panel" id="samplePanel">
+                <div class="sample-panel-heading">
+                    <strong>Voice test samples</strong>
+                    <span>Select a sample phrase to load a phrase and verify your microphone recognition settings.</span>
+                </div>
+                <div class="sample-chip-group">
+                    <button type="button" class="sample-chip" data-lang="en">English</button>
+                    <button type="button" class="sample-chip" data-lang="hi">Hindi</button>
+                    <button type="button" class="sample-chip" data-lang="ta">Tamil</button>
+                    <button type="button" class="sample-chip" data-lang="te">Telugu</button>
+                    <button type="button" class="sample-chip" data-lang="es">Spanish</button>
+                    <button type="button" class="sample-chip" data-lang="fr">French</button>
+                </div>
+            </section>
+
+            <!-- Bottom Stats / Analytics -->
+            <footer class="app-footer">
+                <div class="footer-section">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span>Estimated Speed: <strong id="speedMetric">0ms</strong></span>
+                </div>
+                <div class="footer-section">
+                    <i class="fa-solid fa-circle-nodes"></i>
+                    <span>Network Mode: <strong id="networkMode">Connected</strong></span>
+                </div>
+                <div class="footer-section">
+                    <i class="fa-solid fa-copyright"></i>
+                    <span>AetherTranslate AI Project // NLP Transformer Showcase</span>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Main JavaScript File -->
+    <script src="app.js"></script>
+</body>
+</html>
