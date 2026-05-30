@@ -17,9 +17,31 @@ This project is a lightweight translator app designed to provide both local offl
 - **English (en)**
 - **Hindi (hi)**
 - **Tamil (ta)**
-- **Telugu (te)
+- **Telugu (te)**
 
 The application supports local offline translation for English ↔ Hindi using Hugging Face transformer models, while Tamil and Telugu translations are handled via Google Translate fallback.
+
+## Supported Language Matrix
+
+| Source | Target | Local Offline | Cloud Fallback |
+|--------|--------|---------------|----------------|
+| English | Hindi | Yes | No |
+| Hindi | English | Yes | No |
+| English | Tamil | No | Yes |
+| English | Telugu | No | Yes |
+| Hindi | Tamil | No | Yes |
+| Hindi | Telugu | No | Yes |
+| Tamil | English | No | Yes |
+| Telugu | English | No | Yes |
+
+## Application Architecture
+
+The translator is built as a simple web application with a clean separation between the frontend and backend:
+
+- `static/` contains the user interface and client-side logic.
+- `app.py` is the Flask backend that serves the frontend and translation API.
+- Local transformer models are loaded lazily in a background thread to avoid blocking server startup.
+- The backend chooses the best translation engine depending on model availability and language support.
 
 ## Usage Flow
 
@@ -117,11 +139,39 @@ python app.py
 
 4. Open your browser at `http://127.0.0.1:5000`.
 
+## Deployment
+
+This app can run locally or be deployed to any Python-compatible host.
+
+- For local testing, run `python app.py`.
+- For production, use a WSGI server such as Gunicorn or uWSGI and serve the static files through the Flask app or a CDN.
+- Ensure `requirements.txt` is installed and the server has network access for cloud fallback translation.
+
 ## Notes
 
 - The local models are downloaded from Hugging Face when first used.
 - If local model loading fails, the app automatically uses the cloud fallback.
 - The app is configured to serve static files correctly on Windows by fixing MIME types for CSS and JavaScript.
+
+## Future Improvements
+
+- Add true offline support for Tamil and Telugu with local models.
+- Add user authentication and saved translation history on the server.
+- Add automated tests for the frontend and backend endpoints.
+- Add a deployment script or Dockerfile for container deployment.
+
+## Contributing
+
+Contributions are welcome. To contribute:
+
+1. Fork the repository.
+2. Create a new branch for your feature or fix.
+3. Make your changes.
+4. Open a pull request with a description of the improvements.
+
+## License
+
+No license is specified in this repository yet. If you want to make this open source, add a `LICENSE` file and choose an appropriate license.
 
 ## GitHub Repository
 
