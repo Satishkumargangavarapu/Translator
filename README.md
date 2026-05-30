@@ -7,7 +7,8 @@ A multilingual translator web application built with Flask that combines local E
 ## Repository Metadata
 
 - **Description:** Multilingual Translator Web App using Flask, Hugging Face transformers, and Google Translate fallback.
-- **Website:** (no website configured yet)
+- **Website:** https://github.com/Satishkumargangavarapu/Translator
+- **License:** MIT
 - **Suggested Topics:** `flask`, `transformers`, `machine-translation`, `english-hindi`, `multilingual`, `deep-translator`, `web-app`, `python`, `ai`, `nlp`
 
 ## Overview
@@ -188,7 +189,7 @@ Contributions are welcome. To contribute:
 
 ## License
 
-No license is specified in this repository yet. If you want to make this open source, add a `LICENSE` file and choose an appropriate license.
+This project is released under the MIT License. See the `LICENSE` file for the full terms.
 
 ## GitHub Repository
 
