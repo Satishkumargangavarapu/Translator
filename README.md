@@ -1,10 +1,57 @@
 # Translator
 
-A multilingual translator web application built with Flask for the backend and a glassmorphic UI frontend. It supports English and Hindi translation locally via Hugging Face transformer models, and uses a Google Translate fallback for additional languages.
+A multilingual translator web application built with Flask that combines local English↔Hindi transformer translation with a Google Translate fallback for broader language support.
+
+## Repository Metadata
+
+- **Description:** Multilingual Translator Web App using Flask, Hugging Face transformers, and Google Translate fallback.
+- **Website:** (no website configured yet)
+- **Suggested Topics:** `flask`, `transformers`, `machine-translation`, `english-hindi`, `multilingual`, `deep-translator`, `web-app`, `python`, `ai`, `nlp`
 
 ## Overview
 
 This project is a lightweight translator app designed to provide both local offline translation and cloud-based fallback translation. It serves a static frontend and exposes two main API endpoints for translation and status checks.
+
+## Supported Languages
+
+- **English (en)**
+- **Hindi (hi)**
+- **Tamil (ta)**
+- **Telugu (te)
+
+The application supports local offline translation for English ↔ Hindi using Hugging Face transformer models, while Tamil and Telugu translations are handled via Google Translate fallback.
+
+## Usage Flow
+
+The application flow is described below, showing how user input moves from the browser through the translation engine and back to the UI.
+
+```mermaid
+flowchart TD
+    A[User opens browser] --> B[Frontend loads static UI]
+    B --> C[User enters source text]
+    C --> D[Frontend sends POST /api/translate]
+    D --> E{Is local model available?}
+    E -->|Yes| F[Run local transformer inference]
+    E -->|No| G[Fallback to Google Translate API]
+    F --> H[Return translated text + engine info]
+    G --> H
+    H --> I[Frontend displays result]
+    I --> J[User reads or saves translation]
+    D --> K[Frontend optionally GET /api/status]
+    K --> L[Show model status and engine info]
+```
+
+### Detailed Usage Steps
+
+1. User opens the app in a browser.
+2. The static frontend loads from `static/index.html`, along with `app.js` and `style.css`.
+3. User selects languages and enters a phrase to translate.
+4. The frontend submits the text to `/api/translate`.
+5. The backend checks if the local English-Hindi transformer models are loaded:
+   - If loaded, the app performs inference locally and returns the translated text.
+   - If not loaded or if the requested language pair is not supported locally, the app falls back to the Google Translate API.
+6. The returned translation and engine metadata appear in the UI.
+7. The user can listen to the translated text, review history, or try a new phrase.
 
 ## Features
 
