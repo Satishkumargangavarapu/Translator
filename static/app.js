@@ -67,6 +67,33 @@ document.addEventListener('DOMContentLoaded', () => {
     let userRequestedStop = false;
     let historyData = JSON.parse(localStorage.getItem('aether_translation_history')) || [];
 
+    // Global mapping from language code to SpeechRecognition locale
+    const langMap = {
+        'auto': 'en-US',
+        'en': 'en-US',
+        'hi': 'hi-IN',
+        'ta': 'ta-IN',
+        'te': 'te-IN',
+        'es': 'es-ES',
+        'fr': 'fr-FR'
+    };
+
+    // --- VAD (Voice Activity Detection) variables ---
+    let audioContext = null;
+    let analyser = null;
+    let mediaStream = null;
+    let vadInterval = null;
+    let vadActive = false;
+    const vadConfig = {
+        smoothing: 0.8,
+        threshold: 0.006, // Lower threshold for more sensitive VAD
+        intervalMs: 80,
+        hangoverMs: 250 // time to wait after silence before stopping
+    };
+    let vadSilenceTimer = null;
+    let vadTriggeringStart = false;
+    const vadStartCooldown = 300; // ms to debounce recognition.start attempts
+    const VAD_DEBUG = false; // set true for RMS logging
     const samplePhrases = {
         en: "Hello, how are you today?",
         hi: "नमस्ते, आप आज कैसे हैं?",
@@ -113,6 +140,8 @@ document.addEventListener('DOMContentLoaded', () => {
             sourceText.placeholder = "";
             // user initiated listening; ensure auto-restart remains enabled until they stop
             userRequestedStop = false;
+            // clear any VAD-start debounce flag
+            vadTriggeringStart = false;
         };
 
         recognition.onspeechstart = () => {
@@ -130,9 +159,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sourceText.value.trim() === "") {
                 sourceText.placeholder = "Enter text or click microphone for voice typing...";
             }
+            // If VAD is active/initialized, let the VAD decide when to start recognition again.
             if (!userRequestedStop) {
-                voiceStatusNote.textContent = 'Auto-resuming voice capture after pause...';
-                scheduleRecognitionRestart(700);
+                if (analyser) {
+                    // VAD will restart recognition when it sees voice
+                    voiceStatusNote.textContent = 'Waiting for voice (VAD) to resume capture...';
+                } else {
+                    voiceStatusNote.textContent = 'Auto-resuming voice capture after pause...';
+                    scheduleRecognitionRestart(700);
+                }
             }
         };
 
@@ -186,6 +221,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (finalPieces.length > 0) {
                 const finalTranscript = finalPieces.join(' ');
                 const processed = postProcessTranscript(finalTranscript);
+                // If user has 'auto' selected, perform quick script-based detection
+                if (sourceLang.value === 'auto') {
+                    const detected = detectLanguageFromText(finalTranscript);
+                    if (detected && detected !== 'auto' && detected !== sourceLang.value) {
+                        // Update UI selector to detected language
+                        sourceLang.value = detected;
+                        voiceStatusNote.textContent = `Detected language: ${sourceLang.options[sourceLang.selectedIndex].text}. Switching recognition to ${detected} for better accuracy.`;
+                        // Restart recognition with the new locale for improved subsequent transcripts
+                        if (isListening && recognition) {
+                            try { recognition.stop(); } catch(e) { /* ignore */ }
+                            setTimeout(() => {
+                                recognition.lang = langMap[detected] || 'en-US';
+                                try { recognition.start(); } catch(e) { /* ignore */ }
+                            }, 250);
+                        }
+                    }
+                }
                 const textToAdd = sourceText.value ? ' ' + processed : processed;
                 sourceText.value += textToAdd;
                 updateStats();
@@ -212,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function scheduleRecognitionRestart(delay = 700) {
+    function scheduleRecognitionRestart(delay = 300) {
         if (!recognition || userRequestedStop) return;
         clearTimeout(restartTimer);
         restartTimer = setTimeout(() => {
@@ -226,30 +278,127 @@ document.addEventListener('DOMContentLoaded', () => {
         }, delay);
     }
 
+    function ensureRecognitionStarted() {
+        if (!recognition || isListening || userRequestedStop) return;
+        try {
+            recognition.start();
+        } catch (error) {
+            console.warn('Immediate recognition start failed, retrying in 300ms:', error);
+            setTimeout(() => {
+                if (!recognition || isListening || userRequestedStop) return;
+                try { recognition.start(); } catch (e) { console.warn('Retry recognition start failed:', e); }
+            }, 300);
+        }
+    }
+
+    // Initialize audio VAD pipeline (non-blocking; requests mic permission lazily)
+    async function initVAD() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+        if (audioContext && analyser) return true;
+        try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(mediaStream);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            source.connect(analyser);
+            return true;
+        } catch (e) {
+            console.warn('VAD init failed or permission denied:', e);
+            return false;
+        }
+    }
+
+    function startVAD() {
+        if (!analyser) return;
+        const data = new Float32Array(analyser.fftSize);
+        clearInterval(vadInterval);
+        vadInterval = setInterval(() => {
+            analyser.getFloatTimeDomainData(data);
+            // Compute RMS
+            let sum = 0.0;
+            for (let i = 0; i < data.length; i++) {
+                sum += data[i] * data[i];
+            }
+            const rms = Math.sqrt(sum / data.length);
+
+            if (VAD_DEBUG) console.debug('VAD RMS:', rms.toFixed(5));
+
+            if (rms >= vadConfig.threshold) {
+                // Detected voice
+                vadSilenceTimer && clearTimeout(vadSilenceTimer);
+                if (!vadActive) {
+                    vadActive = true;
+                    voiceStatusNote.textContent = 'Voice detected — starting recognition...';
+                    // Start recognition only if not already listening
+                    if (recognition && !isListening && !vadTriggeringStart) {
+                        vadTriggeringStart = true;
+                        // Ensure the recognition language matches current selector
+                        recognition.lang = langMap[sourceLang.value] || 'en-US';
+                        try {
+                            recognition.start();
+                        } catch (e) {
+                            // Some browsers throw if start is called too quickly; abort and retry after cooldown
+                            try { recognition.abort(); } catch(_) {}
+                            setTimeout(() => {
+                                try { recognition.start(); } catch (e2) { console.warn('VAD-start failed twice:', e2); }
+                            }, vadStartCooldown);
+                        }
+                        // clear triggering flag after cooldown to allow future starts
+                        setTimeout(() => { vadTriggeringStart = false; }, vadStartCooldown + 50);
+                    }
+                }
+            } else {
+                // Silence
+                if (vadActive) {
+                    // Schedule silence hangover then stop recognition
+                    clearTimeout(vadSilenceTimer);
+                    vadSilenceTimer = setTimeout(() => {
+                        vadActive = false;
+                        voiceStatusNote.textContent = 'Silence detected — stopping recognition.';
+                        if (recognition && isListening) {
+                            try { recognition.stop(); } catch (e) { /* ignore */ }
+                        }
+                    }, vadConfig.hangoverMs);
+                }
+            }
+        }, vadConfig.intervalMs);
+    }
+
+    function stopVAD() {
+        clearInterval(vadInterval);
+        vadInterval = null;
+        vadActive = false;
+        clearTimeout(vadSilenceTimer);
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+            mediaStream = null;
+        }
+        if (audioContext) {
+            try { audioContext.close(); } catch(e) {}
+            audioContext = null;
+            analyser = null;
+        }
+    }
+
     function startVoiceTyping() {
         if (!recognition || isListening) return;
-        
-        // Match speech recognition language with selected source language
-        const langMap = {
-            'auto': 'en-US',
-            'en': 'en-US',
-            'hi': 'hi-IN',
-            'ta': 'ta-IN',
-            'te': 'te-IN',
-            'es': 'es-ES',
-            'fr': 'fr-FR'
-        };
+        // Match speech recognition language with selected source language (use global map)
         recognition.lang = langMap[sourceLang.value] || 'en-US';
-        
-        try {
-            userRequestedStop = false;
-            clearTimeout(restartTimer);
-            voiceStatusNote.textContent = 'Starting voice capture...';
-            recognition.start();
-        } catch (e) {
-            console.error("Failed to start voice typing:", e);
-            scheduleRecognitionRestart(1000);
-        }
+        userRequestedStop = false;
+        clearTimeout(restartTimer);
+
+        ensureRecognitionStarted();
+        initVAD().then((ok) => {
+            if (ok) {
+                voiceStatusNote.textContent = 'Microphone ready — speech recognition started immediately.';
+                startVAD();
+            } else {
+                voiceStatusNote.textContent = 'Microphone ready — speech recognition started immediately.';
+            }
+        }).catch(() => {
+            voiceStatusNote.textContent = 'Microphone ready — speech recognition started immediately.';
+        });
     }
 
     function stopVoiceTyping() {
@@ -258,6 +407,8 @@ document.addEventListener('DOMContentLoaded', () => {
             userRequestedStop = true;
             clearTimeout(restartTimer);
             recognition.stop();
+            // Stop any VAD monitoring and release mic
+            stopVAD();
         } catch (e) {
             console.error("Failed to stop voice typing:", e);
         }
@@ -400,9 +551,10 @@ document.addEventListener('DOMContentLoaded', () => {
             clearTimeout(translationTimeout);
         }
         
+        // Faster debounce for snappier feedback from microphone input
         translationTimeout = setTimeout(() => {
             performTranslation();
-        }, 800); // 800ms debounce
+        }, 400); // 400ms debounce
     }
 
     // Manual translation button trigger
@@ -750,5 +902,26 @@ document.addEventListener('DOMContentLoaded', () => {
             "'": '&#039;'
         };
         return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    // Lightweight language detection using script heuristics and simple keyword checks.
+    // Fast and offline — optimized for English, Hindi, Tamil, Telugu, Spanish, French.
+    function detectLanguageFromText(text) {
+        if (!text || text.trim() === '') return 'auto';
+        // Check for Indic and other script ranges first (very fast regex checks)
+        if (/[\u0900-\u097F]/.test(text)) return 'hi'; // Devanagari -> Hindi
+        if (/[\u0B80-\u0BFF]/.test(text)) return 'ta'; // Tamil
+        if (/[\u0C00-\u0C7F]/.test(text)) return 'te'; // Telugu
+
+        const lower = text.toLowerCase();
+        // Rudimentary Spanish heuristics
+        if (/\b(hola|gracias|por favor|¿|¡|que)\b/.test(lower)) return 'es';
+        // Rudimentary French heuristics
+        if (/\b(merci|bonjour|s'il|suis|êtes|je)\b/.test(lower)) return 'fr';
+
+        // Latin letters default to English (covers many Latin-script languages)
+        if (/[A-Za-z]/.test(text)) return 'en';
+
+        return 'auto';
     }
 });

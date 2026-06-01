@@ -3,6 +3,7 @@ import threading
 import time
 import mimetypes
 import logging
+import traceback
 from flask import Flask, request, jsonify
 from deep_translator import GoogleTranslator
 
@@ -49,12 +50,20 @@ model_status = {
     'engine': 'Fallback (Google Translate)'
 }
 
+# Retry configuration for loading local transformer models
+MODEL_RETRY_INTERVAL = 300  # seconds between retry attempts when load fails (5 minutes)
+MODEL_MAX_RETRIES = 0  # 0 = unlimited
+_model_load_attempts = 0
+_model_retry_timer = None
+
 # Lock for model access
 model_lock = threading.Lock()
 
 def load_transformer_models():
     global models, model_status
-    print("Background thread: Starting to load Transformer models...")
+    global _model_load_attempts, _model_retry_timer
+    _model_load_attempts += 1
+    print("Background thread: Starting to load Transformer models... (attempt", _model_load_attempts, ")")
     with model_lock:
         model_status['status'] = 'loading'
         model_status['engine'] = 'Loading local models...'
@@ -84,12 +93,37 @@ def load_transformer_models():
             model_status['engine'] = 'Transformer (Local-Offline)'
             model_status['error'] = None
         print("Background thread: Transformer models loaded successfully!")
+        # Cancel any pending retry timer
+        if _model_retry_timer:
+            try:
+                _model_retry_timer.cancel()
+            except Exception:
+                pass
+            _model_retry_timer = None
     except Exception as e:
-        print(f"Background thread error loading models: {str(e)}")
+        tb = traceback.format_exc()
+        print(f"Background thread error loading models: {str(e)}\n{tb}")
         with model_lock:
             model_status['status'] = 'failed'
             model_status['error'] = str(e)
             model_status['engine'] = 'Fallback (Cloud-Online)'
+        # Schedule a retry after configured interval unless we've exceeded max retries
+        def _schedule_retry():
+            global _model_retry_timer
+            with model_lock:
+                if model_status['status'] == 'loaded' or model_status['status'] == 'loading':
+                    return
+                print(f"Scheduling a retry to load models in {MODEL_RETRY_INTERVAL}s...")
+                _model_retry_timer = threading.Timer(MODEL_RETRY_INTERVAL, load_transformer_models)
+                _model_retry_timer.daemon = True
+                _model_retry_timer.start()
+
+        # If MODEL_MAX_RETRIES is 0 (unlimited) or attempts < max, schedule retry
+        if MODEL_MAX_RETRIES == 0 or _model_load_attempts < MODEL_MAX_RETRIES:
+            try:
+                _schedule_retry()
+            except Exception:
+                pass
 
 def translate_fallback(text, source, target):
     """Fallback translation using deep-translator (Google Translate API)"""
@@ -103,8 +137,9 @@ def translate_fallback(text, source, target):
         return translator.translate(text), "Cloud API (Online Fallback)"
     except Exception as e:
         logging.error("Fallback translation error: %s", e)
+ 
         return f"[Translation Error: {str(e)}]", "None"
-
+ 
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
@@ -125,6 +160,26 @@ def get_languages():
         'languages': language_list,
         'supported_pairs': SUPPORTED_LANGUAGE_MATRIX
     })
+
+
+@app.route('/api/reload_models', methods=['POST'])
+def reload_models():
+    """Admin endpoint to manually trigger loading local transformer models."""
+    global _model_load_attempts, _model_retry_timer
+    with model_lock:
+        if model_status['status'] == 'loading':
+            return jsonify({'started': False, 'message': 'Models are already loading.'}), 409
+        # reset attempts and cancel any scheduled retry
+        _model_load_attempts = 0
+        if _model_retry_timer:
+            try:
+                _model_retry_timer.cancel()
+            except Exception:
+                pass
+            _model_retry_timer = None
+        threading.Thread(target=load_transformer_models, daemon=True).start()
+
+    return jsonify({'started': True, 'message': 'Model reload started.'})
 
 @app.route('/api/translate', methods=['POST'])
 def translate():

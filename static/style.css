@@ -522,6 +522,143 @@ body::before {
     transition: all var(--trans-medium);
 }
 
+/* Mobile-friendly card sizing and spacing */
+@media (max-width: 860px) {
+    .workspace {
+        gap: 18px;
+    }
+
+    .card {
+        min-height: 340px;
+        border-radius: 24px;
+    }
+
+    .card-header,
+    .card-footer,
+    .card-body {
+        padding: 18px;
+    }
+
+    .card-header {
+        flex-wrap: wrap;
+        gap: 14px;
+    }
+
+    .lang-selector-wrapper {
+        width: 100%;
+    }
+
+    .lang-select {
+        width: 100%;
+        font-size: 1rem;
+    }
+
+    .header-actions,
+    .footer-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .card-footer {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .stats-counter {
+        width: 100%;
+    }
+
+    .engine-badge {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .voice-waveform {
+        position: static;
+        width: 100%;
+        margin-top: 16px;
+        left: auto;
+        bottom: auto;
+    }
+
+    .voice-waveform span {
+        font-size: 0.82rem;
+    }
+}
+
+/* Desktop and tablet enhancements for control layout */
+@media (max-width: 1100px) {
+    .app-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+    }
+
+    .header-controls {
+        width: 100%;
+        justify-content: space-between;
+        gap: 14px;
+    }
+
+    .status-indicator {
+        flex: 1;
+        justify-content: space-between;
+    }
+}
+
+/* Mobile sticky action panel */
+@media (max-width: 680px) {
+    .main-content {
+        padding: 20px 16px 90px;
+    }
+
+    .options-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        padding: 14px 16px;
+        margin: 0;
+        backdrop-filter: blur(18px);
+        background: rgba(3, 3, 5, 0.92);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.35);
+        z-index: 100;
+    }
+
+    .options-bar {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .btn {
+        width: 100%;
+    }
+
+    .swap-action-container {
+        display: none;
+    }
+
+    .sample-panel {
+        padding: 18px 18px 20px;
+    }
+
+    .sample-chip-group {
+        justify-content: stretch;
+    }
+
+    .sample-chip {
+        flex: 1 1 45%;
+        text-align: center;
+    }
+
+    .app-footer {
+        padding-bottom: 34px;
+    }
+}
+
 /* Dynamic glowing border matching state */
 .card::before {
     content: '';
